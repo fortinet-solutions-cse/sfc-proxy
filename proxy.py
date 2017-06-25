@@ -724,7 +724,12 @@ def parse_frame_and_deencapsulate(frame, sckt):
                     pf("----------------------------------------------------")
                     pf("----------------------------------------------------")
                     pf("----------------------------------------------------")
-                    sessions_reply_info[swapped_key] = nsh_header
+                    sessions_reply_info[swapped_key] = (outer_eth_header,
+                                         ip_header,
+                                         udp_header,
+                                         vxlan_header,
+                                         eth_nsh_header,
+                                         nsh_header)
 
                 pf("KEY")
                 pf(key)
@@ -829,23 +834,6 @@ def parse_frame_and_encapsulate(frame, sckt):
             tcp_dst_port = getattr(tcp_header_nt, "tcp_dst_port")
             tcp_src_port = getattr(tcp_header_nt, "tcp_src_port")
 
-            #Remove this:
-            """if tcp_dst_port == 22 or tcp_src_port == 22:
-                return (continue_next,
-                        reset_connection,
-                        outer_eth_header,
-                        outer_eth_payload,
-                        nsh_header,
-                        eth_nsh_header,
-                        next_eth_payload,
-                        ip_header,
-                        ip_payload,
-                        udp_header,
-                        udp_payload,
-                        tcp_header_without_opt,
-                        tcp_options,
-                        tcp_payload)
-            """
 
             key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
             pf("\n*** Receiving packet unencapsulated")
@@ -993,22 +981,35 @@ def parse_frame_and_encapsulate_test(frame, sckt):
                  new_eth_nsh_header,
                  new_nsh_header) = sessions[swapped_key]
 
-                new_nsh_header = sessions_reply_info [swapped_key]
+                (reply_outer_eth_header,
+                 reply_ip_header,
+                 reply_udp_header,
+                 reply_vxlan_header,
+                 reply_eth_nsh_header,
+                 new_nsh_header) = sessions_reply_info[swapped_key]
+
+                new_nsh_header_decremented = make_nsh_decr_si(new_nsh_header)
 
                 #Swap headers and send
 
                 #TODO: Swap!!!!
-                new_outer_eth_header_swapped = make_ethernet_header_swap(new_outer_eth_header)
+                """new_outer_eth_header_swapped = make_ethernet_header_swap(new_outer_eth_header)
                 new_ip_header_swapped = make_ip_header_swap(new_ip_header)
-                new_nsh_header_decremented = make_nsh_decr_si(new_nsh_header)
 
                 new_eth_nsh_header_swapped = make_ethernet_header_swap(new_eth_nsh_header)
+                """
 
-                new_pkt = new_outer_eth_header_swapped + \
-                          new_ip_header_swapped + \
-                          new_udp_header + \
-                          new_vxlan_header + \
-                          new_eth_nsh_header_swapped + \
+                new_reply_outer_eth_header_swapped = make_ethernet_header_swap(reply_outer_eth_header)
+                new_reply_ip_header_swapped = make_ip_header_swap(reply_ip_header)
+
+                new_reply_eth_nsh_header_swapped = make_ethernet_header_swap(reply_eth_nsh_header)
+
+
+                new_pkt = new_reply_outer_eth_header_swapped + \
+                          new_reply_ip_header_swapped + \
+                          reply_udp_header + \
+                          reply_vxlan_header + \
+                          new_reply_eth_nsh_header_swapped + \
                           new_nsh_header_decremented + \
                           frame
 
@@ -1256,5 +1257,5 @@ if __name__ == "__main__":
     encap_thread.start()
     test_thread.start()
 
-    pf("Three threads active")
+    pf("Three threads active 0.91")
 
