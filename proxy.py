@@ -542,22 +542,8 @@ unencap_out_if = None
 
 
 #####################################################################
-def parse_frame_and_unencapsulate(frame, sckt):
+def unencapsulate_packet(frame, sckt):
 
-
-    nsh_header = None
-    eth_nsh_header = None
-    next_eth_payload = None
-    ip_header = None
-    ip_payload = None
-    udp_header = None
-    udp_payload = None
-    tcp_header_without_opt = None
-    tcp_options = None
-    tcp_payload = None
-
-    continue_next = False
-    reset_connection = False
 
     (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
     outer_eth_header_nt = StructEthHeader(outer_eth_header)
@@ -598,18 +584,6 @@ def parse_frame_and_unencapsulate(frame, sckt):
 
                 (inner_tcp_header_without_options, inner_tcp_options, inner_tcp_payload) = parse_tcp(inner_ip_payload)
                 inner_tcp_header_nt = StructTcpHeaderWithoutOptions(inner_tcp_header_without_options)
-
-                #Print received packet
-                pf("\n*** Received packet encapsulated:")
-                pf(outer_eth_header_nt)
-                pf(ip_header_nt)
-                pf(udp_header_nt)
-                pf(vxlan_header_nt)
-                pf(eth_nsh_header_nt)
-                pf(nsh_header_nt)
-                pf(inner_eth_header_nt)
-                pf(inner_ip_header_nt)
-                pf(inner_tcp_header_nt)
 
                 eth_dst = getattr(inner_eth_header_nt,"eth_dst")
                 eth_src = getattr(inner_eth_header_nt,"eth_src")
@@ -670,42 +644,10 @@ def parse_frame_and_unencapsulate(frame, sckt):
                     new_pkt = new_pkt[sent:]
                     pf("   Packet sent")
 
-    return(continue_next,
-        reset_connection,
-        outer_eth_header,
-        outer_eth_payload,
-        nsh_header,
-        eth_nsh_header,
-        next_eth_payload,
-        ip_header,
-        ip_payload,
-        udp_header,
-        udp_payload,
-        tcp_header_without_opt,
-        tcp_options,
-        tcp_payload)
-
-def parse_frame_and_encapsulate(frame, sckt):
 
 
-    new_pkt = None
-    outer_eth_header = None
-    outer_eth_payload = None
-    nsh_header = None
-    nsh_payload = None
-    eth_nsh_header = None
-    eth_nsh_payload = None
-    next_eth_payload = None
-    ip_header = None
-    ip_payload = None
-    udp_header = None
-    udp_payload = None
-    tcp_header_without_opt = None
-    tcp_options = None
-    tcp_payload = None
+def encapsulate_request_packet(frame, sckt):
 
-    continue_next = False
-    reset_connection = False
 
     (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
     outer_eth_header_nt = StructEthHeader(outer_eth_header)
@@ -756,16 +698,18 @@ def parse_frame_and_encapsulate(frame, sckt):
                 new_ip_header_swapped = make_ip_header_swap(new_ip_header)
                 new_nsh_header_decremented = make_nsh_decr_si(new_nsh_header)
 
+                new_eth_nsh_header_swapped = make_ethernet_header_swap(new_eth_nsh_header)
+
+
                 new_pkt = new_outer_eth_header_swapped + \
                           new_ip_header_swapped + \
                           new_udp_header + \
                           new_vxlan_header + \
-                          new_eth_nsh_header + \
+                          new_eth_nsh_header_swapped + \
                           new_nsh_header_decremented + \
                           frame
 
                 pf("   Sending packet encapsulated")
-                pf("   "+":".join("{:02x}".format(c) for c in new_pkt))
 
                 while new_pkt:
                     sent = sckt.send(new_pkt)
@@ -774,43 +718,10 @@ def parse_frame_and_encapsulate(frame, sckt):
 
             else:
                 pf("   Packet received, not matching session")
-                pf(threading.current_thread())
 
 
+def encapsulate_reply_packet(frame, sckt):
 
-    return(continue_next,
-        reset_connection,
-        outer_eth_header,
-        outer_eth_payload,
-        nsh_header,
-        eth_nsh_header,
-        next_eth_payload,
-        ip_header,
-        ip_payload,
-        udp_header,
-        udp_payload,
-        tcp_header_without_opt,
-        tcp_options,
-        tcp_payload)
-
-#####################################################################
-
-def parse_frame_and_encapsulate_test(frame, sckt):
-
-
-    nsh_header = None
-    eth_nsh_header = None
-    next_eth_payload = None
-    ip_header = None
-    ip_payload = None
-    udp_header = None
-    udp_payload = None
-    tcp_header_without_opt = None
-    tcp_options = None
-    tcp_payload = None
-
-    continue_next = False
-    reset_connection = False
 
     (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
     outer_eth_header_nt = StructEthHeader(outer_eth_header)
@@ -846,7 +757,6 @@ def parse_frame_and_encapsulate_test(frame, sckt):
 
             if swapped_key in sessions:
                 pf("   Session found")
-                pf(threading.current_thread())
 
                 (new_outer_eth_header,
                  new_ip_header,
@@ -880,7 +790,6 @@ def parse_frame_and_encapsulate_test(frame, sckt):
                           frame
 
                 pf("   Sending packet encapsulated")
-                pf("   "+":".join("{:02x}".format(c) for c in new_pkt))
 
                 while new_pkt:
                     sent = sckt.send(new_pkt)
@@ -890,21 +799,6 @@ def parse_frame_and_encapsulate_test(frame, sckt):
             else:
                 pf("   Packet received, not matching session")
                 pf(threading.current_thread())
-
-    return(continue_next,
-        reset_connection,
-        outer_eth_header,
-        outer_eth_payload,
-        nsh_header,
-        eth_nsh_header,
-        next_eth_payload,
-        ip_header,
-        ip_payload,
-        udp_header,
-        udp_payload,
-        tcp_header_without_opt,
-        tcp_options,
-        tcp_payload)
 
 #####################################################################
 
@@ -922,7 +816,7 @@ def unencapsulating_loop():
 
     while True:
         frame, source = sckt_encap.recvfrom(65565)
-        parse_frame_and_unencapsulate(frame, sckt_unencap_out)
+        unencapsulate_packet(frame, sckt_unencap_out)
 
 
 def encapsulating_requests_loop():
@@ -933,7 +827,7 @@ def encapsulating_requests_loop():
 
     while True:
         frame, source = sckt_unencap_in.recvfrom(65565)
-        parse_frame_and_encapsulate(frame,sckt_encap)
+        encapsulate_request_packet(frame, sckt_encap)
 
 
 def encapsulating_replies_loop():
@@ -944,7 +838,7 @@ def encapsulating_replies_loop():
 
     while True:
         frame, source = sckt_unencap_out.recvfrom(65565)
-        parse_frame_and_encapsulate_test(frame,sckt_encap)
+        encapsulate_reply_packet(frame, sckt_encap)
 
 
 def setup_sockets():
