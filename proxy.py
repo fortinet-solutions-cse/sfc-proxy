@@ -627,9 +627,12 @@ def unencapsulate_packet(frame):
 
                 key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
                 swapped_key = (eth_src, eth_dst, eth_type, ip_src, ip_dst, tcp_src_port, tcp_dst_port)
-                pf("\n****************************************")
-                pf("*** Receiving packet encapsulated")
-                pf("****************************************")
+                pf("\n^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+                pf("^^^ Receiving packet encapsulated ^^^")
+                pf("^^ " + ip2str(ip_src)+":"+str(tcp_src_port)+
+                   "->"+ip2str(ip_dst)+":"+str(tcp_dst_port))
+                pf("^^ "+mac2str(eth_src)+"->"+mac2str(eth_dst)+ ", proto 17 ^^")
+                pf("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
 
                 global sessions
                 if swapped_key in sessions:
@@ -724,9 +727,14 @@ def encapsulate_request_packet(frame):
 
 
             key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
-            pf("\n****************************************")
-            pf("*** Receiving packet unencapsulated")
-            pf("****************************************")
+
+            pf("\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
+            pf("vvv Receiving packet unencapsulated  (In) vvv")
+            pf("vv " + ip2str(ip_src) + ":" + str(tcp_src_port) +
+               "->" + ip2str(ip_dst) + ":" + str(tcp_dst_port))
+            pf("vv " + mac2str(eth_src) + "->" + mac2str(eth_dst) + ", proto 6 vv")
+            pf("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
+
 
             if key in sessions:
                 pf("   Session found")
@@ -798,9 +806,13 @@ def encapsulate_reply_packet(frame):
             tcp_src_port = getattr(tcp_header_nt, "tcp_src_port")
 
             swapped_key = (eth_src, eth_dst, eth_type, ip_src, ip_dst, tcp_src_port, tcp_dst_port)
-            pf("\n****************************************")
-            pf("*** Receiving packet unencapsulated")
-            pf("****************************************")
+
+            pf("\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
+            pf("vvv Receiving packet unencapsulated (Out) vvv")
+            pf("vv " + ip2str(ip_src) + ":" + str(tcp_src_port) +
+               "->" + ip2str(ip_dst) + ":" + str(tcp_dst_port))
+            pf("vv " + mac2str(eth_src) + "->" + mac2str(eth_dst) + ", proto 6 vv")
+            pf("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
 
             if swapped_key in sessions:
                 pf("   Session found")
