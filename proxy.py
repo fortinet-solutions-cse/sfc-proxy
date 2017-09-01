@@ -2,6 +2,46 @@
 
 # This program uses the hexdump module. Install it through pip (pip3 install
 # hexdump) or download it at https://pypi.python.org/pypi/hexdump
+#
+#  _   _  _____ _    _   _____
+# | \ | |/ ____| |  | | |  __ \
+# |  \| | (___ | |__| | | |__) | __ _____  ___   _
+# | . ` |\___ \|  __  | |  ___/ '__/ _ \ \/ / | | |
+# | |\  |____) | |  | | | |   | | | (_) >  <| |_| |
+# |_| \_|_____/|_|  |_| |_|   |_|  \___/_/\_\\__, |
+#                                             __/ |
+#                                            |___/
+#
+#  +-----------------------------------+
+#  |                                   |
+#  |          Service Function         |
+#  |       (nsh and vxlan unaware)     |
+#  |                                   |
+#  +-------+-------------------+-------+
+#          |                   |
+#          |                   |
+#   encapsulated          encapsulated
+#   out                   in
+#          |  ^                | |
+#          |  |                | |
+#          |  |                | v
+#          |                   |
+#  +-------+-------------------+-------+
+#  |                                   |
+#  |               Proxy               |
+#  |        NSH and VXLAN aware        |
+#  |                                   |
+#  +-----------------+-----------------+
+#                    |
+#                    |
+#          unencapsulated interface
+#                    |
+#                  ^ | |
+#                  | | |
+#                  | | v
+#                    |
+#         +----------+-----------+ Network
+#
 
 import hexdump
 import socket
@@ -221,6 +261,12 @@ def print_msg_hdr(outer_eth_header,
     if tcp_payload != None:
         pf('tcp_payload(' + str(tcp_payload) + ')')
 
+
+
+
+# ************************************************
+#  Parsers
+# ************************************************
 
 """Ethernet Frame consists of:
 6 Byte Destination MAC address
@@ -587,7 +633,6 @@ def unencapsulate_packet(frame):
             udp_header_nt = StructUdpHeader(udp_header)
             dst_port=getattr(udp_header_nt,'udp_dst_port')
 
-
             if dst_port == 4790:
 
                 (vxlan_header, vxlan_payload)=parse_vxlan_gpe(udp_payload)
@@ -918,6 +963,7 @@ def setup_sockets():
 
 
 if __name__ == "__main__":
+
 
     parser = argparse.ArgumentParser(description='Python3 script to emulate an SFC proxy,'
                                                  ' removing VxLAN and NSH headers',
