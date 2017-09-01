@@ -13,6 +13,27 @@ import threading
 
 from uuid import getnode as get_mac
 
+# ************************************************
+#  Global definition of data structures and sockets
+# ************************************************
+
+sessions = {}
+sessions_reply_info= {}
+mac_database = {}
+
+sckt_encap = None
+sckt_unencap_in = None
+sckt_unencap_out = None
+
+encap_if = None
+unencap_in_if = None
+unencap_out_if = None
+
+
+# ************************************************
+#  Util functions
+# ************************************************
+
 def bytes_to_mac(bytesmac):
     return ":".join("{:02x}".format(x) for x in bytesmac)
 
@@ -20,6 +41,22 @@ def bytes_to_mac(bytesmac):
 def bytes_to_hex(bytes):
     return " "\
         .join("{:02X}".format(x) for x in bytes)
+
+def pack_namedtuple(struct_fmt, nt):
+    arg_values = []
+    arg_values.append( struct_fmt )
+    for x in nt._fields:
+        arg_values.append( getattr(nt, x) )
+    return struct.pack( *arg_values )
+
+def pf(str):
+    print(str)
+    sys.stdout.flush()
+
+# ************************************************
+#  Class definitions for network headers
+# ************************************************
+
 
 class MetaStruct(type):
     def __new__(cls, clsname, bases, dct):
@@ -33,15 +70,6 @@ class MetaStruct(type):
 
     def __str__(self):
         return "".join("{}({}) ".format(x, getattr(self, x)) for x in self._fields)
-
-
-def pack_namedtuple(struct_fmt, nt):
-    arg_values = []
-    arg_values.append( struct_fmt )
-    for x in nt._fields:
-        arg_values.append( getattr(nt, x) )
-    return struct.pack( *arg_values )
-
 
 class StructEthHeader(object, metaclass=MetaStruct):
     fields = 'eth_dst eth_src eth_type'
@@ -526,24 +554,21 @@ def parse_vxlan_gpe(packet):
     payload = packet[header_length:]
     return header, payload
 
+from enum import Enum
+class Sockets(Enum):
+     output_socket = 1
+     input_socket = 2
 
-#####################################################################
+# ************************************************
+#  Loops for encapsulating / unencapsulating
+# ************************************************
+def ip2str(ip_bytes):
+    return str(socket.inet_ntoa(ip_bytes))
 
-sessions = {}
-sessions_reply_info= {}
+def mac2str(mac_bytes):
+    return ':'.join("{0!r}".format(b) for b in mac_bytes)
 
-sckt_encap = None
-sckt_unencap_in = None
-sckt_unencap_out = None
-
-encap_if = None
-unencap_in_if = None
-unencap_out_if = None
-
-
-#####################################################################
-def unencapsulate_packet(frame, sckt):
-
+def unencapsulate_packet(frame):
 
     (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
     outer_eth_header_nt = StructEthHeader(outer_eth_header)
@@ -627,7 +652,7 @@ def unencapsulate_packet(frame, sckt):
                                          eth_nsh_header,
                                          nsh_header)
 
-                pf(len(sessions))
+                pf("   # of sessions: "+ str(len(sessions)))
 
 
                 new_pkt=nsh_payload
@@ -636,17 +661,38 @@ def unencapsulate_packet(frame, sckt):
 
                 # Send all data
                 global sckt_unencap_in
-                while new_pkt:
-                    if (isReply):
-                        sent = sckt_unencap_in.send(new_pkt)
+                global sckt_unencap_out
+                global mac_database
+
+                egress_socket = None
+
+                if eth_dst in mac_database:
+                    if mac_database[eth_dst] == Sockets.input_socket:
+                        egress_socket = sckt_unencap_out
+                        mac_database[eth_src] = Sockets.output_socket
+                        pf("   Dst mac in database. Leaving via 'out' interface")
                     else:
-                        sent = sckt.send(new_pkt)
+                        egress_socket = sckt_unencap_in
+                        mac_database[eth_src] = Sockets.input_socket
+                        pf("   Dst mac in database. Leaving via 'in' interface")
+                else:
+                    egress_socket = sckt_unencap_out
+                    mac_database[eth_src] = Sockets.output_socket
+                    mac_database[eth_dst] = Sockets.input_socket
+                    pf("   Dst mac not in database. Leaving via 'out' interface")
+
+                pf("   ****")
+                pf("   **** MAC database: "+str(mac_database))
+                pf("   ****")
+
+                while new_pkt:
+                    sent = egress_socket.send(new_pkt)
                     new_pkt = new_pkt[sent:]
                     pf("   Packet sent")
 
 
 
-def encapsulate_request_packet(frame, sckt):
+def encapsulate_request_packet(frame):
 
 
     (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
@@ -710,9 +756,10 @@ def encapsulate_request_packet(frame, sckt):
                           frame
 
                 pf("   Sending packet encapsulated")
+                global sckt_encap
 
                 while new_pkt:
-                    sent = sckt.send(new_pkt)
+                    sent = sckt_encap.send(new_pkt)
                     new_pkt = new_pkt[sent:]
                     pf("   Packet sent")
 
@@ -720,7 +767,7 @@ def encapsulate_request_packet(frame, sckt):
                 pf("   Packet received, not matching session")
 
 
-def encapsulate_reply_packet(frame, sckt):
+def encapsulate_reply_packet(frame):
 
 
     (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
@@ -791,8 +838,10 @@ def encapsulate_reply_packet(frame, sckt):
 
                 pf("   Sending packet encapsulated")
 
+                global sckt_encap
+
                 while new_pkt:
-                    sent = sckt.send(new_pkt)
+                    sent = sckt_encap.send(new_pkt)
                     new_pkt = new_pkt[sent:]
                     pf("   Packet sent")
 
@@ -800,13 +849,10 @@ def encapsulate_reply_packet(frame, sckt):
                 pf("   Packet received, not matching session")
                 pf(threading.current_thread())
 
-#####################################################################
 
-
-def pf(str):
-    print(str)
-    sys.stdout.flush()
-
+# ************************************************
+#  Socket listeners
+# ************************************************
 
 def unencapsulating_loop():
 
@@ -816,29 +862,27 @@ def unencapsulating_loop():
 
     while True:
         frame, source = sckt_encap.recvfrom(65565)
-        unencapsulate_packet(frame, sckt_unencap_out)
+        unencapsulate_packet(frame)
 
 
 def encapsulating_requests_loop():
 
-    global sckt_encap
     global sckt_unencap_in
     global encap_if
 
     while True:
         frame, source = sckt_unencap_in.recvfrom(65565)
-        encapsulate_request_packet(frame, sckt_encap)
+        encapsulate_request_packet(frame)
 
 
 def encapsulating_replies_loop():
 
-    global sckt_encap
     global sckt_unencap_out
     global encap_if
 
     while True:
         frame, source = sckt_unencap_out.recvfrom(65565)
-        encapsulate_reply_packet(frame, sckt_encap)
+        encapsulate_reply_packet(frame)
 
 
 def setup_sockets():
@@ -900,5 +944,5 @@ if __name__ == "__main__":
     encapsulating_requests_thread.start()
     encapsulating_replies_thread.start()
 
-    pf("v0.93 - Threads active - Listening...")
+    pf("v0.99 - Threads active - Listening...")
 
