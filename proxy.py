@@ -818,6 +818,7 @@ def encapsulate_request_packet(frame):
 
             else:
                 pf("   Packet received, not matching session")
+                exit(-1)
 
 
 def encapsulate_reply_packet(frame):
@@ -904,7 +905,7 @@ def encapsulate_reply_packet(frame):
 
             else:
                 pf("   Packet received, not matching session")
-                pf(threading.current_thread())
+                exit(-2)
 
 
 # ************************************************
