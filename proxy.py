@@ -721,7 +721,7 @@ def unencapsulate_packet(frame):
                 pf("   ****")
 
                 while new_pkt:
-                    pf("   Length of packet: "+ len(new_pkt))
+                    pf("   Length of packet: "+ str(len(new_pkt)))
                     sent = egress_socket.send(new_pkt)
                     new_pkt = new_pkt[sent:]
                     pf("   Packet sent")
@@ -800,7 +800,7 @@ def encapsulate_request_packet(frame):
                 global sckt_encap
 
                 while new_pkt:
-                    pf("   Length of packet: "+ len(new_pkt))
+                    pf("   Length of packet: "+ str(len(new_pkt)))
                     sent = sckt_encap.send(new_pkt)
                     new_pkt = new_pkt[sent:]
                     pf("   Packet sent")
@@ -880,7 +880,7 @@ def encapsulate_reply_packet(frame):
                 global sckt_encap
 
                 while new_pkt:
-                    pf("   Length of packet: "+ len(new_pkt))
+                    pf("   Length of packet: "+ str(len(new_pkt)))
                     if len(new_pkt)>=4096 :
                         pf("Error: packet really large: "+str(new_pkt))
                         exit(-2)
