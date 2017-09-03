@@ -671,7 +671,6 @@ def unencapsulate_packet(frame):
                 isReply=False
 
                 key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
-                swapped_key = (eth_src, eth_dst, eth_type, ip_src, ip_dst, tcp_src_port, tcp_dst_port)
                 pf("\n^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
                 pf("^^^ Receiving packet encapsulated ^^^")
                 pf("^^ " + ip2str(ip_src)+":"+str(tcp_src_port)+
@@ -680,25 +679,13 @@ def unencapsulate_packet(frame):
                 pf("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
 
                 global sessions
-                if swapped_key in sessions:
-                    isReply = True
-                    pf("   Session found. Seems to be a reply")
-                    sessions_reply_info[swapped_key] = (outer_eth_header,
-                                         ip_header,
-                                         udp_header,
-                                         vxlan_header,
-                                         eth_nsh_header,
-                                         nsh_header)
 
-
-                #Replies do not create new sessions
-                if not isReply:
-                    sessions[key]=(outer_eth_header,
-                                         ip_header,
-                                         udp_header,
-                                         vxlan_header,
-                                         eth_nsh_header,
-                                         nsh_header)
+                sessions[key]=(outer_eth_header,
+                                     ip_header,
+                                     udp_header,
+                                     vxlan_header,
+                                     eth_nsh_header,
+                                     nsh_header)
 
                 pf("   # of sessions: "+ str(len(sessions)))
 
@@ -734,6 +721,7 @@ def unencapsulate_packet(frame):
                 pf("   ****")
 
                 while new_pkt:
+                    pf("   Length of packet: "+ len(new_pkt))
                     sent = egress_socket.send(new_pkt)
                     new_pkt = new_pkt[sent:]
                     pf("   Packet sent")
@@ -812,6 +800,7 @@ def encapsulate_request_packet(frame):
                 global sckt_encap
 
                 while new_pkt:
+                    pf("   Length of packet: "+ len(new_pkt))
                     sent = sckt_encap.send(new_pkt)
                     new_pkt = new_pkt[sent:]
                     pf("   Packet sent")
@@ -851,7 +840,7 @@ def encapsulate_reply_packet(frame):
             tcp_dst_port = getattr(tcp_header_nt, "tcp_dst_port")
             tcp_src_port = getattr(tcp_header_nt, "tcp_src_port")
 
-            swapped_key = (eth_src, eth_dst, eth_type, ip_src, ip_dst, tcp_src_port, tcp_dst_port)
+            key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
 
             pf("\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
             pf("vvv Receiving packet unencapsulated (Out) vvv")
@@ -860,7 +849,7 @@ def encapsulate_reply_packet(frame):
             pf("vv " + mac2str(eth_src) + "->" + mac2str(eth_dst) + ", proto 6 vv")
             pf("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
 
-            if swapped_key in sessions:
+            if key in sessions:
                 pf("   Session found")
 
                 (new_outer_eth_header,
@@ -868,29 +857,21 @@ def encapsulate_reply_packet(frame):
                  new_udp_header,
                  new_vxlan_header,
                  new_eth_nsh_header,
-                 new_nsh_header) = sessions[swapped_key]
+                 new_nsh_header) = sessions[key]
 
-                (reply_outer_eth_header,
-                 reply_ip_header,
-                 reply_udp_header,
-                 reply_vxlan_header,
-                 reply_eth_nsh_header,
-                 new_nsh_header) = sessions_reply_info[swapped_key]
+                # Swap headers and send
 
+                new_outer_eth_header_swapped = make_ethernet_header_swap(new_outer_eth_header)
+                new_ip_header_swapped = make_ip_header_swap(new_ip_header)
                 new_nsh_header_decremented = make_nsh_decr_si(new_nsh_header)
 
-                #Swap headers and send
+                new_eth_nsh_header_swapped = make_ethernet_header_swap(new_eth_nsh_header)
 
-                new_reply_outer_eth_header_swapped = make_ethernet_header_swap(reply_outer_eth_header)
-                new_reply_ip_header_swapped = make_ip_header_swap(reply_ip_header)
-
-                new_reply_eth_nsh_header_swapped = make_ethernet_header_swap(reply_eth_nsh_header)
-
-                new_pkt = new_reply_outer_eth_header_swapped + \
-                          new_reply_ip_header_swapped + \
-                          reply_udp_header + \
-                          reply_vxlan_header + \
-                          new_reply_eth_nsh_header_swapped + \
+                new_pkt = new_outer_eth_header_swapped + \
+                          new_ip_header_swapped + \
+                          new_udp_header + \
+                          new_vxlan_header + \
+                          new_eth_nsh_header_swapped + \
                           new_nsh_header_decremented + \
                           frame
 
@@ -899,9 +880,14 @@ def encapsulate_reply_packet(frame):
                 global sckt_encap
 
                 while new_pkt:
-                    sent = sckt_encap.send(new_pkt)
-                    new_pkt = new_pkt[sent:]
-                    pf("   Packet sent")
+                    pf("   Length of packet: "+ len(new_pkt))
+                    if len(new_pkt)>=4096 :
+                        pf("Error: packet really large: "+str(new_pkt))
+                        exit(-2)
+                    else:
+                        sent = sckt_encap.send(new_pkt)
+                        new_pkt = new_pkt[sent:]
+                        pf("   Packet sent")
 
             else:
                 pf("   Packet received, not matching session")
@@ -956,11 +942,11 @@ def setup_sockets():
     sckt_encap = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
     sckt_encap.bind((encap_if, 0))
 
-    sckt_unencap_in = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
-    sckt_unencap_in.bind((unencap_in_if, 0))
-
     sckt_unencap_out = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
     sckt_unencap_out.bind((unencap_out_if, 0))
+
+    sckt_unencap_in = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
+    sckt_unencap_in.bind((unencap_in_if, 0))
 
 
 if __name__ == "__main__":
@@ -996,12 +982,12 @@ if __name__ == "__main__":
     setup_sockets()
 
     unencapsulating_thread = threading.Thread(target=unencapsulating_loop, name="unencapsulating thread")
-    encapsulating_requests_thread = threading.Thread(target=encapsulating_requests_loop, name="encapsulating requests thread")
     encapsulating_replies_thread = threading.Thread(target=encapsulating_replies_loop, name="encapsulating replies thread")
+    encapsulating_requests_thread = threading.Thread(target=encapsulating_requests_loop, name="encapsulating requests thread")
 
     unencapsulating_thread.start()
-    encapsulating_requests_thread.start()
     encapsulating_replies_thread.start()
+    encapsulating_requests_thread.start()
 
     pf("v0.99 - Threads active - Listening...")
 
