@@ -677,6 +677,7 @@ def unencapsulate_packet(frame):
                    "->"+ip2str(ip_dst)+":"+str(tcp_dst_port))
                 pf("^^ "+mac2str(eth_src)+"->"+mac2str(eth_dst)+ ", proto 17 ^^")
                 pf("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
+                pf("   Length of packet: " + str(len(frame)))
 
                 global sessions
 
@@ -767,6 +768,7 @@ def encapsulate_request_packet(frame):
                "->" + ip2str(ip_dst) + ":" + str(tcp_dst_port))
             pf("vv " + mac2str(eth_src) + "->" + mac2str(eth_dst) + ", proto 6 vv")
             pf("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
+            pf("   Length of packet: " + str(len(frame)))
 
 
             if key in sessions:
@@ -848,6 +850,7 @@ def encapsulate_reply_packet(frame):
                "->" + ip2str(ip_dst) + ":" + str(tcp_dst_port))
             pf("vv " + mac2str(eth_src) + "->" + mac2str(eth_dst) + ", proto 6 vv")
             pf("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
+            pf("   Length of packet: " + str(len(frame)))
 
             if key in sessions:
                 pf("   Session found")
@@ -883,7 +886,10 @@ def encapsulate_reply_packet(frame):
                     pf("   Length of packet: "+ str(len(new_pkt)))
                     if len(new_pkt)>=4096 :
                         pf("Error: packet really large: "+str(new_pkt))
-                        exit(-2)
+                        pf("Discarding packet")
+                        new_pkt=[]
+
+#                        exit(-2)
                     else:
                         sent = sckt_encap.send(new_pkt)
                         new_pkt = new_pkt[sent:]
