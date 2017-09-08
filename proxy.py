@@ -612,7 +612,13 @@ def ip2str(ip_bytes):
     return str(socket.inet_ntoa(ip_bytes))
 
 def mac2str(mac_bytes):
-    return ':'.join("{0!r}".format(b) for b in mac_bytes)
+    return ':'.join(format(b, 'x') for b in mac_bytes)
+
+def macDb2str(mac_db):
+    tmp_str=""
+    for key_mac, socket_value  in mac_db.items():
+        tmp_str += "   " + mac2str(key_mac) + " in " + str(socket_value.value) + "(" + str(socket_value.name) + ")\n"
+    return tmp_str
 
 def unencapsulate_packet(frame):
 
@@ -718,7 +724,8 @@ def unencapsulate_packet(frame):
                     pf("   Dst mac not in database. Leaving via 'out' interface")
 
                 pf("   ****")
-                pf("   **** MAC database: "+str(mac_database))
+                pf("   **** MAC database: ")
+                pf(macDb2str(mac_database))
                 pf("   ****")
 
                 while new_pkt:
@@ -744,7 +751,6 @@ def encapsulate_request_packet(frame):
         ip_protocol = getattr(ip_header_nt, 'ip_protocol')
 
         if ip_protocol == 6: #TCP
-            #In this case check if this belongs to an existing session and add the VxLAN/NSH header
 
             (tcp_header_without_options, tcp_options, tcp_payload) = parse_tcp(ip_payload)
             tcp_header_nt = StructTcpHeaderWithoutOptions(tcp_header_without_options)
