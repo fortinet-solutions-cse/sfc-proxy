@@ -872,7 +872,9 @@ if __name__ == "__main__":
     setup_sockets()
 
     threadA = threading.Thread(target=loopA, name="loopA")
+    threadA.daemon = True
     threadB = threading.Thread(target=loopB, name="loopB")
+    threadB.daemon = True
 
     threadA.start()
     threadB.start()
