@@ -881,3 +881,5 @@ if __name__ == "__main__":
 
     pf("v0.1 - Threads active - Listening...")
 
+    while True:
+        time.sleep(1)
