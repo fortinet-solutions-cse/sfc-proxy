@@ -1,6 +1,3 @@
-This script emulates a Proxy in Service Function Chain to allow NSH unaware Service Functions receive traffic.
+This script gets packet from one network interface and puts them in the other one.
 
-It  encapsulate/unencapsulate VxLAN/NSH packets
-
-Note it is still a prototype and not fully working. It still prints a lot of debugging information and needs to be cleaned up.
-
+It is useful to simulate simple VMs when using Service Function Chaining
