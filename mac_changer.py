@@ -3,45 +3,34 @@
 # This program uses the hexdump module. Install it through pip (pip3 install
 # hexdump) or download it at https://pypi.python.org/pypi/hexdump
 #
-#  _   _  _____ _    _   _____
-# | \ | |/ ____| |  | | |  __ \
-# |  \| | (___ | |__| | | |__) | __ _____  ___   _
-# | . ` |\___ \|  __  | |  ___/ '__/ _ \ \/ / | | |
-# | |\  |____) | |  | | | |   | | | (_) >  <| |_| |
-# |_| \_|_____/|_|  |_| |_|   |_|  \___/_/\_\\__, |
-#                                             __/ |
-#                                            |___/
+#  __  __               _____ _
+# |  \/  |             / ____| |
+# | \  / | __ _  ___  | |    | |__   __ _ _ __   __ _  ___ _ __
+# | |\/| |/ _` |/ __| | |    | '_ \ / _` | '_ \ / _` |/ _ \ '__|
+# | |  | | (_| | (__  | |____| | | | (_| | | | | (_| |  __/ |
+# |_|  |_|\__,_|\___|  \_____|_| |_|\__,_|_| |_|\__, |\___|_|
+#                                                __/ |
+#                                               |___/
 #
-#  +-----------------------------------+
-#  |                                   |
-#  |          Service Function         |
-#  |       (nsh and vxlan unaware)     |
-#  |                                   |
-#  +-------+-------------------+-------+
-#          |                   |
-#          |                   |
-#   encapsulated          encapsulated
-#   out                   in
-#          |  ^                | |
-#          |  |                | |
-#          |  |                | v
-#          |                   |
-#  +-------+-------------------+-------+
-#  |                                   |
-#  |               Proxy               |
-#  |        NSH and VXLAN aware        |
-#  |                                   |
-#  +-----------------+-----------------+
-#                    |
-#                    |
-#          unencapsulated interface
-#                    |
-#                  ^ | |
-#                  | | |
-#                  | | v
-#                    |
-#         +----------+-----------+ Network
+#  Port As       Port Bs
+#     +            +
+#     |            |
+#     |            |
+#     |            |
+# +---+------------+---+
+# |                    |
+# |    MAC Changer     |
+# |                    |
+# +---+------------+---+
+#     |            |
+#     |            |
+#     |            |
+#     |            |
+#     +            +
+#   Port A         Port B
 #
+#  Changes mac randomly from Port A to Port As.
+#  Forwards packets from Port Bs to Port B.
 
 import hexdump
 import socket
@@ -50,6 +39,8 @@ import sys
 import struct
 import collections
 import threading
+import random
+import time
 
 from uuid import getnode as get_mac
 
@@ -57,18 +48,15 @@ from uuid import getnode as get_mac
 #  Global definition of data structures and sockets
 # ************************************************
 
-sessions = {}
-sessions_reply_info= {}
-mac_database = {}
+scktA = None
+scktAs = None
+scktB = None
+scktBs = None
 
-sckt_encap = None
-sckt_unencap_in = None
-sckt_unencap_out = None
-
-encap_if = None
-unencap_in_if = None
-unencap_out_if = None
-
+ifA = None
+ifAs = None
+ifB = None
+ifBs = None
 
 # ************************************************
 #  Util functions
@@ -404,6 +392,7 @@ def make_ip_header_swap(header):
     return nt.pack()
 #####################################################################
 
+
 def parse_udp(packet):
     header_length = 8
     header = packet[:header_length]
@@ -411,6 +400,7 @@ def parse_udp(packet):
     return header, payload
 
 #####################################################################
+
 
 """  TCP Header Format (RFC793)
     0                   1                   2                   3
@@ -605,9 +595,6 @@ class Sockets(Enum):
      output_socket = 1
      input_socket = 2
 
-# ************************************************
-#  Loops for encapsulating / unencapsulating
-# ************************************************
 def ip2str(ip_bytes):
     return str(socket.inet_ntoa(ip_bytes))
 
@@ -620,386 +607,174 @@ def macDb2str(mac_db):
         tmp_str += "   " + mac2str(key_mac) + " in " + str(socket_value.value) + "(" + str(socket_value.name) + ")\n"
     return tmp_str
 
-def unencapsulate_packet(frame):
-
-    (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
-    outer_eth_header_nt = StructEthHeader(outer_eth_header)
-    outer_eth_type = getattr(outer_eth_header_nt, 'eth_type')
-
-    if (outer_eth_type == 0x0800):  # EtherType: IPv4 0x0800
-        next_eth_payload = outer_eth_payload
-
-        (ip_header, ip_payload) = parse_ip(next_eth_payload)
-        ip_header_nt = StructIpHeader(ip_header)
-        ip_protocol = getattr(ip_header_nt, 'ip_protocol')
-
-        if ip_protocol == 17:  # UDP is protocol 17
-            (udp_header, udp_payload) = parse_udp(ip_payload)
-            reset_connection = True
-            udp_header_nt = StructUdpHeader(udp_header)
-            dst_port=getattr(udp_header_nt,'udp_dst_port')
-
-            if dst_port == 4790:
-
-                (vxlan_header, vxlan_payload)=parse_vxlan_gpe(udp_payload)
-                vxlan_header_nt=StructVxLanGPEHeader(vxlan_header)
-
-
-                (eth_nsh_header, eth_nsh_payload)=parse_ethernet(vxlan_payload)
-                eth_nsh_header_nt = StructEthHeader(eth_nsh_header)
-
-                (nsh_header, nsh_payload) = parse_nsh(eth_nsh_payload)
-                nsh_header_nt = StructNshHeader(nsh_header)
-
-
-                (inner_eth_header, inner_eth_payload) = parse_ethernet(nsh_payload)
-                inner_eth_header_nt = StructEthHeader(inner_eth_header)
-
-                (inner_ip_header, inner_ip_payload) = parse_ip(inner_eth_payload)
-                inner_ip_header_nt = StructIpHeader(inner_ip_header)
-
-                (inner_tcp_header_without_options, inner_tcp_options, inner_tcp_payload) = parse_tcp(inner_ip_payload)
-                inner_tcp_header_nt = StructTcpHeaderWithoutOptions(inner_tcp_header_without_options)
-
-                eth_dst = getattr(inner_eth_header_nt,"eth_dst")
-                eth_src = getattr(inner_eth_header_nt,"eth_src")
-                eth_type = getattr(inner_eth_header_nt,"eth_type")
-
-                ip_dst = getattr(inner_ip_header_nt, "ip_dst")
-                ip_src = getattr(inner_ip_header_nt, "ip_src")
-
-                tcp_dst_port = getattr(inner_tcp_header_nt, "tcp_dst_port")
-                tcp_src_port = getattr(inner_tcp_header_nt, "tcp_src_port")
-
-
-                #First check if this is a reply to an existing session
-                #Build a key with mac/ip swapped
-                isReply=False
-
-                key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
-                pf("\n^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
-                pf("^^^ Receiving packet encapsulated ^^^")
-                pf("^^ " + ip2str(ip_src)+":"+str(tcp_src_port)+
-                   "->"+ip2str(ip_dst)+":"+str(tcp_dst_port))
-                pf("^^ "+mac2str(eth_src)+"->"+mac2str(eth_dst)+ ", proto 17 ^^")
-                pf("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
-                pf("   Length of packet: " + str(len(frame)))
-
-                global sessions
-
-                sessions[key]=(outer_eth_header,
-                                     ip_header,
-                                     udp_header,
-                                     vxlan_header,
-                                     eth_nsh_header,
-                                     nsh_header)
-
-                pf("   # of sessions: "+ str(len(sessions)))
-
-
-                new_pkt=nsh_payload
-
-                pf("   Sending packet deencapsulated")
-
-                # Send all data
-                global sckt_unencap_in
-                global sckt_unencap_out
-                global mac_database
-
-                egress_socket = None
-
-                if eth_dst in mac_database:
-                    if mac_database[eth_dst] == Sockets.input_socket:
-                        egress_socket = sckt_unencap_out
-                        mac_database[eth_src] = Sockets.output_socket
-                        pf("   Dst mac in database. Leaving via 'out' interface")
-                    else:
-                        egress_socket = sckt_unencap_in
-                        mac_database[eth_src] = Sockets.input_socket
-                        pf("   Dst mac in database. Leaving via 'in' interface")
-                else:
-                    egress_socket = sckt_unencap_out
-                    mac_database[eth_src] = Sockets.output_socket
-                    mac_database[eth_dst] = Sockets.input_socket
-                    pf("   Dst mac not in database. Leaving via 'out' interface")
-
-                pf("   ****")
-                pf("   **** MAC database: ")
-                pf(macDb2str(mac_database))
-                pf("   ****")
-
-                while new_pkt:
-                    pf("   Length of packet: "+ str(len(new_pkt)))
-                    sent = egress_socket.send(new_pkt)
-                    new_pkt = new_pkt[sent:]
-                    pf("   Packet sent")
-
-
-
-def encapsulate_request_packet(frame):
-
-
-    (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
-    outer_eth_header_nt = StructEthHeader(outer_eth_header)
-    outer_eth_type = getattr(outer_eth_header_nt, 'eth_type')
-
-    if (outer_eth_type == 0x0800):  # EtherType: IPv4 0x0800
-        next_eth_payload = outer_eth_payload
-
-        (ip_header, ip_payload) = parse_ip(next_eth_payload)
-        ip_header_nt = StructIpHeader(ip_header)
-        ip_protocol = getattr(ip_header_nt, 'ip_protocol')
-
-        if ip_protocol == 6: #TCP
-
-            (tcp_header_without_options, tcp_options, tcp_payload) = parse_tcp(ip_payload)
-            tcp_header_nt = StructTcpHeaderWithoutOptions(tcp_header_without_options)
-
-            eth_dst = getattr(outer_eth_header_nt, "eth_dst")
-            eth_src = getattr(outer_eth_header_nt, "eth_src")
-            eth_type = getattr(outer_eth_header_nt, "eth_type")
-
-            ip_dst = getattr(ip_header_nt, "ip_dst")
-            ip_src = getattr(ip_header_nt, "ip_src")
-
-            tcp_dst_port = getattr(tcp_header_nt, "tcp_dst_port")
-            tcp_src_port = getattr(tcp_header_nt, "tcp_src_port")
-
-
-            key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
-
-            pf("\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
-            pf("vvv Receiving packet unencapsulated  (In) vvv")
-            pf("vv " + ip2str(ip_src) + ":" + str(tcp_src_port) +
-               "->" + ip2str(ip_dst) + ":" + str(tcp_dst_port))
-            pf("vv " + mac2str(eth_src) + "->" + mac2str(eth_dst) + ", proto 6 vv")
-            pf("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
-            pf("   Length of packet: " + str(len(frame)))
-
-
-            if key in sessions:
-                pf("   Session found")
-
-                (new_outer_eth_header,
-                 new_ip_header,
-                 new_udp_header,
-                 new_vxlan_header,
-                 new_eth_nsh_header,
-                 new_nsh_header) = sessions[key]
-
-                #Swap headers and send
-
-                new_outer_eth_header_swapped = make_ethernet_header_swap(new_outer_eth_header)
-                new_ip_header_swapped = make_ip_header_swap(new_ip_header)
-                new_nsh_header_decremented = make_nsh_decr_si(new_nsh_header)
-
-                new_eth_nsh_header_swapped = make_ethernet_header_swap(new_eth_nsh_header)
-
-
-                new_pkt = new_outer_eth_header_swapped + \
-                          new_ip_header_swapped + \
-                          new_udp_header + \
-                          new_vxlan_header + \
-                          new_eth_nsh_header_swapped + \
-                          new_nsh_header_decremented + \
-                          frame
-
-                pf("   Sending packet encapsulated")
-                global sckt_encap
-
-                while new_pkt:
-                    pf("   Length of packet: "+ str(len(new_pkt)))
-                    sent = sckt_encap.send(new_pkt)
-                    new_pkt = new_pkt[sent:]
-                    pf("   Packet sent")
-
-            else:
-                pf("   Packet received, not matching session")
-                exit(-1)
-
-
-def encapsulate_reply_packet(frame):
-
-
-    (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
-    outer_eth_header_nt = StructEthHeader(outer_eth_header)
-    outer_eth_type = getattr(outer_eth_header_nt, 'eth_type')
-
-    if (outer_eth_type == 0x0800):  # EtherType: IPv4 0x0800
-        next_eth_payload = outer_eth_payload
-
-        (ip_header, ip_payload) = parse_ip(next_eth_payload)
-        ip_header_nt = StructIpHeader(ip_header)
-        ip_protocol = getattr(ip_header_nt, 'ip_protocol')
-
-        if ip_protocol == 6: #TCP
-            #In this case check if this belongs to an existing session and add the VxLAN/NSH header
-
-            (tcp_header_without_options, tcp_options, tcp_payload) = parse_tcp(ip_payload)
-            tcp_header_nt = StructTcpHeaderWithoutOptions(tcp_header_without_options)
-
-            eth_dst = getattr(outer_eth_header_nt, "eth_dst")
-            eth_src = getattr(outer_eth_header_nt, "eth_src")
-            eth_type = getattr(outer_eth_header_nt, "eth_type")
-
-            ip_dst = getattr(ip_header_nt, "ip_dst")
-            ip_src = getattr(ip_header_nt, "ip_src")
-
-            tcp_dst_port = getattr(tcp_header_nt, "tcp_dst_port")
-            tcp_src_port = getattr(tcp_header_nt, "tcp_src_port")
-
-            key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
-
-            pf("\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
-            pf("vvv Receiving packet unencapsulated (Out) vvv")
-            pf("vv " + ip2str(ip_src) + ":" + str(tcp_src_port) +
-               "->" + ip2str(ip_dst) + ":" + str(tcp_dst_port))
-            pf("vv " + mac2str(eth_src) + "->" + mac2str(eth_dst) + ", proto 6 vv")
-            pf("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
-            pf("   Length of packet: " + str(len(frame)))
-
-            if key in sessions:
-                pf("   Session found")
-
-                (new_outer_eth_header,
-                 new_ip_header,
-                 new_udp_header,
-                 new_vxlan_header,
-                 new_eth_nsh_header,
-                 new_nsh_header) = sessions[key]
-
-                # Swap headers and send
-
-                new_outer_eth_header_swapped = make_ethernet_header_swap(new_outer_eth_header)
-                new_ip_header_swapped = make_ip_header_swap(new_ip_header)
-                new_nsh_header_decremented = make_nsh_decr_si(new_nsh_header)
-
-                new_eth_nsh_header_swapped = make_ethernet_header_swap(new_eth_nsh_header)
-
-                new_pkt = new_outer_eth_header_swapped + \
-                          new_ip_header_swapped + \
-                          new_udp_header + \
-                          new_vxlan_header + \
-                          new_eth_nsh_header_swapped + \
-                          new_nsh_header_decremented + \
-                          frame
-
-                pf("   Sending packet encapsulated")
-
-                global sckt_encap
-
-                while new_pkt:
-                    pf("   Length of packet: "+ str(len(new_pkt)))
-                    if len(new_pkt)>=4096 :
-                        pf("Error: packet really large: "+str(new_pkt))
-                        pf("Discarding packet")
-                        new_pkt=[]
-
-#                        exit(-2)
-                    else:
-                        sent = sckt_encap.send(new_pkt)
-                        new_pkt = new_pkt[sent:]
-                        pf("   Packet sent")
-
-            else:
-                pf("   Packet received, not matching session")
-                exit(-2)
+def randomMAC():
+    return [ 0x00, 0x16, 0x3e,
+        random.randint(0x00, 0x7f),
+        random.randint(0x00, 0xff),
+        random.randint(0x00, 0xff) ]
+
+def change_dst_mac(header):
+    eth_header_nt = StructEthHeader(header)
+    # Change dst
+    nt = eth_header_nt._replace(eth_dst=randomMAC())
+    return nt.pack()
+
+
+def changeMacAndForward(frame, output_socket):
+
+   (eth_header, eth_payload) = parse_ethernet(frame)
+
+   new_eth_header = change_dst_mac(eth_header)
+
+   new_pkt = new_eth_header + eth_payload
+
+   while new_pkt:
+       pf("   Length of packet: " + str(len(new_pkt)))
+       if len(new_pkt) >= 4096:
+           pf("Error: packet really large: " + str(new_pkt))
+           pf("Discarding packet")
+           new_pkt = []
+       else:
+           sent = output_socket.send(new_pkt)
+           new_pkt = new_pkt[sent:]
+           pf("   Packet sent")
+
+
+def forward(frame, output_socket):
+
+   new_pkt = frame
+
+   while new_pkt:
+       pf("   Length of packet: " + str(len(new_pkt)))
+       if len(new_pkt) >= 4096:
+           pf("Error: packet really large: " + str(new_pkt))
+           pf("Discarding packet")
+           new_pkt = []
+       else:
+           sent = output_socket.send(new_pkt)
+           new_pkt = new_pkt[sent:]
+           pf("   Packet sent")
 
 
 # ************************************************
 #  Socket listeners
 # ************************************************
 
-def unencapsulating_loop():
+def loopA():
 
-    global sckt_encap
-    global sckt_unencap_out
-    global unencap_out_if
-
-    while True:
-        frame, source = sckt_encap.recvfrom(65565)
-        unencapsulate_packet(frame)
-
-
-def encapsulating_requests_loop():
-
-    global sckt_unencap_in
-    global encap_if
+    global scktA
+    global scktAs
 
     while True:
-        frame, source = sckt_unencap_in.recvfrom(65565)
-        encapsulate_request_packet(frame)
+        frame, source = scktA.recvfrom(65565)
+        changeMacAndForward(frame, output_socket=scktAs)
 
 
-def encapsulating_replies_loop():
+def loopAs():
 
-    global sckt_unencap_out
-    global encap_if
+    global scktAs
+    global scktA
 
     while True:
-        frame, source = sckt_unencap_out.recvfrom(65565)
-        encapsulate_reply_packet(frame)
+        frame, source = scktAs.recvfrom(65565)
+        forward(frame, output_socket=scktA)
+
+def loopB():
+
+    global scktB
+    global scktBs
+
+    while True:
+        frame, source = scktB.recvfrom(65565)
+        changeMacAndForward(frame, output_socket=scktBs)
+
+
+def loopBs():
+
+    global scktBs
+    global scktB
+
+    while True:
+        frame, source = scktBs.recvfrom(65565)
+        forward(frame, output_socket=scktB)
 
 
 def setup_sockets():
 
-    global sckt_encap
-    global sckt_unencap_in
-    global sckt_unencap_out
+    global scktA
+    global scktB
+    global scktAs
+    global scktBs
 
-    global encap_if
-    global unencap_in_if
-    global unencap_out_if
+    global ifA
+    global ifB
+    global ifAs
+    global ifBs
 
-    sckt_encap = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
-    sckt_encap.bind((encap_if, 0))
+    scktA = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
+    scktA.bind((ifA, 0))
 
-    sckt_unencap_out = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
-    sckt_unencap_out.bind((unencap_out_if, 0))
+    scktA = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
+    scktA.bind((ifA, 0))
 
-    sckt_unencap_in = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
-    sckt_unencap_in.bind((unencap_in_if, 0))
+    scktA = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
+    scktA.bind((ifA, 0))
+
+    scktA = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
+    scktA.bind((ifA, 0))
 
 
 if __name__ == "__main__":
 
-
-    parser = argparse.ArgumentParser(description='Python3 script to emulate an SFC proxy,'
-                                                 ' removing VxLAN and NSH headers',
-                                     prog='proxy.py',
+    parser = argparse.ArgumentParser(description='Python3 script to change mac addresses from port A to As,'
+                                                 ' and forward packets from port Bs to B',
+                                     prog='mac_changer',
                                      usage='%(prog)s [options]',
                                      add_help=True)
 
-    parser.add_argument('-e', '--encap_if',
-                        help='Specify the interface where VxLAN/NSH traffic is encapsulated')
-    parser.add_argument('-uin', '--unencap_in_if',
-                        help='Specify the interface accepting VxLAN/NSH traffic unencapsulated')
-    parser.add_argument('-uout', '--unencap_out_if',
-                        help='Specify the interface where VxLAN/NSH traffic is sent unencapsulated')
+    parser.add_argument('-a', '--ifA',
+                        help='Specify the A interface, where traffic is forwarded from As')
+    parser.add_argument('-as', '--ifAs',
+                        help='Specify the As interface, where traffic is forwarded from A')
+    parser.add_argument('-b', '--ifB',
+                        help='Specify the B interface, where traffic is forwarded from Bs')
+    parser.add_argument('-bs', '--ifBs',
+                        help='Specify the Bs interface, where traffic is forwarded from B')
 
     args = parser.parse_args()
 
-    if (args.encap_if is None) or (args.unencap_in_if is None) or (args.unencap_out_if is None):
+    if (args.ifA is None) or (args.ifB is None) or (args.ifAs is None) or (args.ifBs is None):
         parser.print_help()
         sys.exit(-1)
 
-    pf("args.encap_if(" + str(args.encap_if) + ")")
-    pf("args.unencap_in_if(" + str(args.unencap_in_if) + ")")
-    pf("args.unencap_out_if(" + str(args.unencap_out_if) + ")")
+    pf("args.ifA(" + str(args.ifA) + ")")
+    pf("args.ifB(" + str(args.ifB) + ")")
+    pf("args.ifAs(" + str(args.ifAs) + ")")
+    pf("args.ifBs(" + str(args.ifBs) + ")")
 
-    encap_if = args.encap_if
-    unencap_in_if = args.unencap_in_if
-    unencap_out_if = args.unencap_out_if
+    ifA = args. ifA
+    ifB = args. ifB
+    ifAs = args. ifAs
+    ifBs = args. ifBs
 
     setup_sockets()
 
-    unencapsulating_thread = threading.Thread(target=unencapsulating_loop, name="unencapsulating thread")
-    encapsulating_replies_thread = threading.Thread(target=encapsulating_replies_loop, name="encapsulating replies thread")
-    encapsulating_requests_thread = threading.Thread(target=encapsulating_requests_loop, name="encapsulating requests thread")
+    threadA = threading.Thread(target=loopA, name="loopA")
+    threadA.daemon = True
+    threadB = threading.Thread(target=loopB, name="loopB")
+    threadB.daemon = True
+    threadAs = threading.Thread(target=loopAs, name="loopAs")
+    threadAs.daemon = True
+    threadBs = threading.Thread(target=loopBs, name="loopBs")
+    threadBs.daemon = True
 
-    unencapsulating_thread.start()
-    encapsulating_replies_thread.start()
-    encapsulating_requests_thread.start()
+    threadA.start()
+    threadB.start()
+    threadAs.start()
+    threadBs.start()
 
-    pf("v0.99 - Threads active - Listening...")
+    while True:
+        time.sleep(1)
+
+    pf("v0.1 - Threads active - Listening...")
 
