@@ -608,10 +608,10 @@ def macDb2str(mac_db):
     return tmp_str
 
 def randomMAC():
-    return [ 0x00, 0x16, 0x3e,
+    return bytes([ 0x00, 0x16, 0x3e,
         random.randint(0x00, 0x7f),
         random.randint(0x00, 0xff),
-        random.randint(0x00, 0xff) ]
+        random.randint(0x00, 0xff) ])
 
 def change_dst_mac(header):
     eth_header_nt = StructEthHeader(header)
@@ -628,6 +628,8 @@ def changeMacAndForward(frame, output_socket):
 
    new_pkt = new_eth_header + eth_payload
 
+   pf("Changing Mac")
+
    while new_pkt:
        pf("   Length of packet: " + str(len(new_pkt)))
        if len(new_pkt) >= 4096:
@@ -643,6 +645,8 @@ def changeMacAndForward(frame, output_socket):
 def forward(frame, output_socket):
 
    new_pkt = frame
+
+   pf("Forwarding packet")
 
    while new_pkt:
        pf("   Length of packet: " + str(len(new_pkt)))
@@ -714,14 +718,14 @@ def setup_sockets():
     scktA = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
     scktA.bind((ifA, 0))
 
-    scktA = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
-    scktA.bind((ifA, 0))
+    scktB = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
+    scktB.bind((ifB, 0))
 
-    scktA = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
-    scktA.bind((ifA, 0))
+    scktAs = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
+    scktAs.bind((ifAs, 0))
 
-    scktA = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
-    scktA.bind((ifA, 0))
+    scktBs = socket.socket(socket.AF_PACKET, socket.SOCK_RAW, socket.ntohs(0x0003))
+    scktBs.bind((ifBs, 0))
 
 
 if __name__ == "__main__":
@@ -752,10 +756,10 @@ if __name__ == "__main__":
     pf("args.ifAs(" + str(args.ifAs) + ")")
     pf("args.ifBs(" + str(args.ifBs) + ")")
 
-    ifA = args. ifA
-    ifB = args. ifB
-    ifAs = args. ifAs
-    ifBs = args. ifBs
+    ifA = args.ifA
+    ifB = args.ifB
+    ifAs = args.ifAs
+    ifBs = args.ifBs
 
     setup_sockets()
 
