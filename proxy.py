@@ -750,7 +750,7 @@ def encapsulate_request_packet(frame):
         ip_header_nt = StructIpHeader(ip_header)
         ip_protocol = getattr(ip_header_nt, 'ip_protocol')
 
-        if ip_protocol == 6: #TCP
+        if ip_protocol == 6 or ip_protocol == 17: #TCP or UDP
 
             (tcp_header_without_options, tcp_options, tcp_payload) = parse_tcp(ip_payload)
             tcp_header_nt = StructTcpHeaderWithoutOptions(tcp_header_without_options)
@@ -832,7 +832,7 @@ def encapsulate_reply_packet(frame):
         ip_header_nt = StructIpHeader(ip_header)
         ip_protocol = getattr(ip_header_nt, 'ip_protocol')
 
-        if ip_protocol == 6: #TCP
+        if ip_protocol == 6 or ip_protocol == 17: #TCP or UDP
             #In this case check if this belongs to an existing session and add the VxLAN/NSH header
 
             (tcp_header_without_options, tcp_options, tcp_payload) = parse_tcp(ip_payload)
