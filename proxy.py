@@ -58,7 +58,7 @@ from uuid import getnode as get_mac
 # ************************************************
 
 sessions = {}
-sessions_reply_info= {}
+sessions_reply_info = {}
 mac_database = {}
 
 sckt_encap = None
@@ -79,19 +79,22 @@ def bytes_to_mac(bytesmac):
 
 
 def bytes_to_hex(bytes):
-    return " "\
+    return " " \
         .join("{:02X}".format(x) for x in bytes)
+
 
 def pack_namedtuple(struct_fmt, nt):
     arg_values = []
-    arg_values.append( struct_fmt )
+    arg_values.append(struct_fmt)
     for x in nt._fields:
-        arg_values.append( getattr(nt, x) )
-    return struct.pack( *arg_values )
+        arg_values.append(getattr(nt, x))
+    return struct.pack(*arg_values)
+
 
 def pf(str):
     print(str)
     sys.stdout.flush()
+
 
 # ************************************************
 #  Class definitions for network headers
@@ -105,11 +108,13 @@ class MetaStruct(type):
         def new(cls, record):
             return super(cls, cls).__new__(
                 cls, *struct.unpack(dct['struct_fmt'], record))
+
         dct.update(__new__=new)
         return super(MetaStruct, cls).__new__(cls, clsname, (nt,), dct)
 
     def __str__(self):
         return "".join("{}({}) ".format(x, getattr(self, x)) for x in self._fields)
+
 
 class StructEthHeader(object, metaclass=MetaStruct):
     fields = 'eth_dst eth_src eth_type'
@@ -120,8 +125,8 @@ class StructEthHeader(object, metaclass=MetaStruct):
 
     def __str__(self):
         return ("StructEthHeader(eth_dst=" + bytes_to_mac(getattr(self, 'eth_dst'))
-            + ', eth_src=' + bytes_to_mac(getattr(self, 'eth_src'))
-            + ', eth_type=' + str(getattr(self, 'eth_type')) + ")")
+                + ', eth_src=' + bytes_to_mac(getattr(self, 'eth_src'))
+                + ', eth_type=' + str(getattr(self, 'eth_type')) + ")")
 
 
 class StructNshHeader(object, metaclass=MetaStruct):
@@ -134,7 +139,7 @@ class StructNshHeader(object, metaclass=MetaStruct):
     def __str__(self):
         str1 = super().__str__()
         str2 = (' nsh_spi=' + str(self.get_nsh_spi())
-            + ", nsh_si=" + str(self.get_nsh_si()))
+                + ", nsh_si=" + str(self.get_nsh_si()))
         return str1 + str2
 
     def get_nsh_spi(self):
@@ -154,9 +159,9 @@ class StructNshHeader(object, metaclass=MetaStruct):
 
 
 class StructUdpHeader(object, metaclass=MetaStruct):
-
     fields = 'udp_src_port udp_dst_port udp_data_length udp_checksum'
     struct_fmt = '!HHHH'
+
     def pack(self):
         return pack_namedtuple(self.struct_fmt, self)
 
@@ -164,8 +169,10 @@ class StructUdpHeader(object, metaclass=MetaStruct):
 class StructIpHeader(object, metaclass=MetaStruct):
     fields = 'ip_ver_ihl_type ip_total_length ip_id ip_flags_frag_offset ip_time2live ip_protocol ip_hdr_checksum ip_src ip_dst'
     struct_fmt = '!HHHHBBH4s4s'
+
     def pack(self):
         return pack_namedtuple(self.struct_fmt, self)
+
     def __str__(self):
         str_ip_src = socket.inet_ntoa(getattr(self, 'ip_src'))
         str_ip_dst = socket.inet_ntoa(getattr(self, 'ip_dst'))
@@ -173,11 +180,14 @@ class StructIpHeader(object, metaclass=MetaStruct):
         str2 = ' str_ip_src=' + str_ip_src + ", str_ip_dst=" + str_ip_dst
         return str1 + str2
 
+
 class StructTcpHeaderWithoutOptions(object, metaclass=MetaStruct):
     fields = 'tcp_src_port tcp_dst_port tcp_seq_number tcp_ack tcp_byte_data_offset tcp_flags tcp_win_size tcp_checksum tcp_urgent_ptr'
     struct_fmt = '!HHLLBBHHH'
+
     def pack(self):
         return pack_namedtuple(self.struct_fmt, self)
+
     def __str__(self):
         str1 = super().__str__()
         (fin, syn, rst, psh, ack, urg) = parse_tcp_flags(getattr(self, 'tcp_flags'))
@@ -226,10 +236,10 @@ class StructVxLanGPEHeader(object, metaclass=MetaStruct):
         str1 = super().__str__()
 
         str2 = ' flags=' + str(vxlan_flags) + ', reserved1=' + \
-           str(vxlan_reserved1) + ', next protocol=' + str(next_proto) + \
-           ', vni=' + str(vni) + ', reserved2=' + ', next protocol=' +  \
-           str(next_proto) + ', vni=' + str(int.from_bytes(vni, byteorder='big')) + \
-           ', reserved2=' + str(vxlan_reserved2)
+               str(vxlan_reserved1) + ', next protocol=' + str(next_proto) + \
+               ', vni=' + str(vni) + ', reserved2=' + ', next protocol=' + \
+               str(next_proto) + ', vni=' + str(int.from_bytes(vni, byteorder='big')) + \
+               ', reserved2=' + str(vxlan_reserved2)
         return str1 + str2
 
 
@@ -239,9 +249,9 @@ def print_frame(source, frame):
 
 
 def print_msg_hdr(outer_eth_header,
-        nsh_header, eth_nsh_header,
-        ip_header, udp_header,
-        tcp_header_without_opt, tcp_options, tcp_payload):
+                  nsh_header, eth_nsh_header,
+                  ip_header, udp_header,
+                  tcp_header_without_opt, tcp_options, tcp_payload):
     if outer_eth_header != None:
         pf(str(StructEthHeader(outer_eth_header)))
     if nsh_header != None:
@@ -257,11 +267,9 @@ def print_msg_hdr(outer_eth_header,
         if tcp_options != None:
             str_tcp_options = ' tcp_options=' + bytes_to_hex(tcp_options)
         pf(str(StructTcpHeaderWithoutOptions(tcp_header_without_opt))
-            + str_tcp_options)
+           + str_tcp_options)
     if tcp_payload != None:
         pf('tcp_payload(' + str(tcp_payload) + ')')
-
-
 
 
 # ************************************************
@@ -290,6 +298,7 @@ def parse_ethernet(frame):
     payload = frame[header_length:]
     return header, payload
 
+
 def make_ethernet_header_swap(header):
     outer_eth_header_nt = StructEthHeader(header)
     # Swap src <-> dst
@@ -298,16 +307,18 @@ def make_ethernet_header_swap(header):
         eth_src=getattr(outer_eth_header_nt, 'eth_dst'))
     return nt.pack()
 
+
 def make_outer_ethernet_nsh_header(inner_eth_header):
     outer_eth_nsh_header_nt = StructEthHeader(inner_eth_header)
 
-    mac_src=struct.pack("!6s", bytes.fromhex((hex(get_mac())[2:])))
+    mac_src = struct.pack("!6s", bytes.fromhex((hex(get_mac())[2:])))
     # EtherType: "Network Service Header" 0x894F
     nt = outer_eth_nsh_header_nt._replace(
         eth_dst=getattr(outer_eth_nsh_header_nt, 'eth_dst'),
         eth_src=mac_src,
         eth_type=0x894F)
     return nt.pack()
+
 
 #####################################################################
 """
@@ -328,6 +339,8 @@ NSH MD-type 1 -> four Context Headers 4-byte each
     |                Mandatory Context Header                       |
     +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 """
+
+
 def parse_nsh(packet):
     header_length = 8
     context_length = 16
@@ -335,11 +348,13 @@ def parse_nsh(packet):
     payload = packet[header_length + context_length:]
     return header, payload
 
+
 def make_nsh_decr_si(nsh_header):
     nt = StructNshHeader(nsh_header)
     # Decrement NSH Service Index
-    nt = nt._replace( nsh_sph=nt.make_nsh_sph_with_si(nt.get_nsh_si() - 1) )
+    nt = nt._replace(nsh_sph=nt.make_nsh_sph_with_si(nt.get_nsh_si() - 1))
     return nt.pack()
+
 
 def make_nsh_mdtype1(nsh_spi, nsh_si):
     # NSH MD-type 1 -> 8 bytes Base Header + four Context Headers 4-byte each
@@ -351,15 +366,16 @@ def make_nsh_mdtype1(nsh_spi, nsh_si):
     nt = StructNshHeader(nsh_header)
     nt = nt._replace(
         nsh_flags_length=0x6,
-        nsh_md_type= 0x1, # MD Type = 0x1, four Context Headers
-        nsh_np=0x3, # Ethernet
+        nsh_md_type=0x1,  # MD Type = 0x1, four Context Headers
+        nsh_np=0x3,  # Ethernet
         nsh_sph=nt.make_nsh_sph_with_spi_si(nsh_spi, nsh_si),
         nsh_ctx1=0,
         nsh_ctx2=0,
         nsh_ctx3=0,
         nsh_ctx4=0
-        )
+    )
     return nt.pack()
+
 
 #####################################################################
 
@@ -381,19 +397,22 @@ def make_nsh_mdtype1(nsh_spi, nsh_si):
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 """
 
+
 def parse_ip(packet):
     header_length_in_bytes = (packet[0] & 0x0F) * 4
     header = packet[:header_length_in_bytes]
     payload = packet[header_length_in_bytes:]
     return header, payload
 
+
 def make_ip_header(header, new_ip_total_length):
     nt = StructIpHeader(header)
     # Change the Total Length
-    nt = nt._replace( ip_total_length=new_ip_total_length )
+    nt = nt._replace(ip_total_length=new_ip_total_length)
     # Change the Header Checksum
-    nt = nt._replace( ip_hdr_checksum=calculate_ip_checksum(nt.pack()) )
+    nt = nt._replace(ip_hdr_checksum=calculate_ip_checksum(nt.pack()))
     return nt.pack()
+
 
 def make_ip_header_swap(header):
     ip_header_nt = StructIpHeader(header)
@@ -402,6 +421,8 @@ def make_ip_header_swap(header):
         ip_src=getattr(ip_header_nt, 'ip_dst'),
         ip_dst=getattr(ip_header_nt, 'ip_src'))
     return nt.pack()
+
+
 #####################################################################
 
 def parse_udp(packet):
@@ -409,6 +430,7 @@ def parse_udp(packet):
     header = packet[:header_length]
     payload = packet[header_length:]
     return header, payload
+
 
 #####################################################################
 
@@ -433,6 +455,8 @@ def parse_udp(packet):
    |                             data                              |
    +-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+-+
 """
+
+
 def parse_tcp(packet):
     header_basic_length = 20
     header_without_options = packet[:header_basic_length]
@@ -448,7 +472,7 @@ def parse_tcp(packet):
 def make_ip_package(ip_header, header_without_options, options, payload):
     # Modify the TCP Checksum
     new_tcp_checksum = calculate_tcp_checksum(ip_header,
-        header_without_options, options, payload)
+                                              header_without_options, options, payload)
     nt = StructTcpHeaderWithoutOptions(header_without_options)
     nt_new_header_without_options = nt._replace(
         tcp_checksum=new_tcp_checksum)
@@ -466,11 +490,11 @@ def make_tpc_hdr_ack(header_without_options, port, num_bytes_added):
     new_tcp_ack = getattr(nt, 'tcp_ack')
 
     (tcp_fin_f, tcp_syn_f, tcp_rst_f, tcp_psh_f, tcp_ack_f,
-        tcp_urg_f) = parse_tcp_flags(getattr(nt, 'tcp_flags'))
+     tcp_urg_f) = parse_tcp_flags(getattr(nt, 'tcp_flags'))
 
     # If packet does not belong to TCP 3-Way Handshake:
     # reduce the ACK according to the added bytes
-    if ( (tcp_ack_f == True) and (tcp_syn_f == False) ):
+    if ((tcp_ack_f == True) and (tcp_syn_f == False)):
         new_tcp_ack -= num_bytes_added
     nt_new_header_without_options = nt._replace(tcp_ack=new_tcp_ack)
     return nt_new_header_without_options.pack()
@@ -481,8 +505,8 @@ def make_tpc_hdr_seq(header_without_options, port, num_bytes_added):
     new_tcp_seq = getattr(nt, 'tcp_seq_number')
 
     (tcp_fin_f, tcp_syn_f, tcp_rst_f, tcp_psh_f, tcp_ack_f,
-        tcp_urg_f) = parse_tcp_flags(getattr(nt, 'tcp_flags'))
-    if ( (tcp_ack_f == True) and (tcp_syn_f == False) ):
+     tcp_urg_f) = parse_tcp_flags(getattr(nt, 'tcp_flags'))
+    if ((tcp_ack_f == True) and (tcp_syn_f == False)):
         new_tcp_seq += num_bytes_added
 
     nt_new_header_without_options = nt._replace(tcp_seq_number=new_tcp_seq)
@@ -492,24 +516,24 @@ def make_tpc_hdr_seq(header_without_options, port, num_bytes_added):
 def get_tpc_sync(header_without_options):
     nt = StructTcpHeaderWithoutOptions(header_without_options)
     (tcp_fin_f, tcp_syn_f, tcp_rst_f, tcp_psh_f, tcp_ack_f,
-        tcp_urg_f) = parse_tcp_flags(getattr(nt, 'tcp_flags'))
+     tcp_urg_f) = parse_tcp_flags(getattr(nt, 'tcp_flags'))
     return tcp_syn_f
 
 
 def goes_from_server_to_client(header_without_options, port):
     nt = StructTcpHeaderWithoutOptions(header_without_options)
-    return ( port == getattr(nt, 'tcp_src_port') )
+    return (port == getattr(nt, 'tcp_src_port'))
 
 
 def goes_from_client_to_server(header_without_options, port):
     nt = StructTcpHeaderWithoutOptions(header_without_options)
-    return ( port == getattr(nt, 'tcp_dst_port') )
+    return (port == getattr(nt, 'tcp_dst_port'))
 
 
 def has_correct_port(header_without_options, port):
     nt = StructTcpHeaderWithoutOptions(header_without_options)
-    return (( port == getattr(nt, 'tcp_src_port') ) or
-        ( port == getattr(nt, 'tcp_dst_port') ) )
+    return ((port == getattr(nt, 'tcp_src_port')) or
+            (port == getattr(nt, 'tcp_dst_port')))
 
 
 def parse_tcp_flags(flags):
@@ -532,7 +556,8 @@ def get_tcp_flags_str(fin, syn, rst, psh, ack, urg):
     str += 'F' if fin else '-'
     return str
 
-#Base on #https://github.com/secdev/scapy/blob/master/scapy/utils.py
+
+# Base on #https://github.com/secdev/scapy/blob/master/scapy/utils.py
 def calculate_checksum(pkt):
     import array
     if len(pkt) % 2 == 1:
@@ -541,10 +566,11 @@ def calculate_checksum(pkt):
     s = (s >> 16) + (s & 0xffff)
     s += s >> 16
     s = ~s
-    if struct.pack("H",1) == "\x00\x01": # big endian
+    if struct.pack("H", 1) == "\x00\x01":  # big endian
         return s & 0xffff
     else:
-        return (((s>>8)&0xff)|s<<8) & 0xffff
+        return (((s >> 8) & 0xff) | s << 8) & 0xffff
+
 
 def calculate_tcp_checksum(
         ip_header, header_without_options, options, payload):
@@ -556,7 +582,7 @@ def calculate_tcp_checksum(
         dst=getattr(ip_header_nt, 'ip_dst'),
         zero=0,
         protocol=getattr(ip_header_nt, 'ip_protocol'),
-        tcp_length=len(header_without_options + options + payload) )
+        tcp_length=len(header_without_options + options + payload))
 
     # skipping the checksum field itself
     header_without_options_nt = StructTcpHeaderWithoutOptions(header_without_options)
@@ -568,15 +594,17 @@ def calculate_tcp_checksum(
         + options
         + payload)
 
+
 def calculate_ip_checksum(pkt):
     # skipping the checksum field itself
     pkt = pkt[0:10] + b'\0' + b'\0' + pkt[12:len(pkt)]
     return calculate_checksum(pkt)
 
+
 def need_reset_tcp_connection(tcp_header_without_options):
     nt = StructTcpHeaderWithoutOptions(tcp_header_without_options)
     (tcp_fin_f, tcp_syn_f, tcp_rst_f, tcp_psh_f, tcp_ack_f,
-        tcp_urg_f) = parse_tcp_flags(getattr(nt, 'tcp_flags'))
+     tcp_urg_f) = parse_tcp_flags(getattr(nt, 'tcp_flags'))
     return tcp_rst_f
 
 
@@ -600,10 +628,14 @@ def parse_vxlan_gpe(packet):
     payload = packet[header_length:]
     return header, payload
 
+
 from enum import Enum
+
+
 class Sockets(Enum):
-     output_socket = 1
-     input_socket = 2
+    output_socket = 1
+    input_socket = 2
+
 
 # ************************************************
 #  Loops for encapsulating / unencapsulating
@@ -611,17 +643,19 @@ class Sockets(Enum):
 def ip2str(ip_bytes):
     return str(socket.inet_ntoa(ip_bytes))
 
+
 def mac2str(mac_bytes):
     return ':'.join(format(b, 'x') for b in mac_bytes)
 
+
 def macDb2str(mac_db):
-    tmp_str=""
-    for key_mac, socket_value  in mac_db.items():
+    tmp_str = ""
+    for key_mac, socket_value in mac_db.items():
         tmp_str += "   " + mac2str(key_mac) + " in " + str(socket_value.value) + "(" + str(socket_value.name) + ")\n"
     return tmp_str
 
-def unencapsulate_packet(frame):
 
+def unencapsulate_packet(frame):
     (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
     outer_eth_header_nt = StructEthHeader(outer_eth_header)
     outer_eth_type = getattr(outer_eth_header_nt, 'eth_type')
@@ -635,22 +669,19 @@ def unencapsulate_packet(frame):
 
         if ip_protocol == 17:  # UDP is protocol 17
             (udp_header, udp_payload) = parse_udp(ip_payload)
-            reset_connection = True
             udp_header_nt = StructUdpHeader(udp_header)
-            dst_port=getattr(udp_header_nt,'udp_dst_port')
+            dst_port = getattr(udp_header_nt, 'udp_dst_port')
 
             if dst_port == 4790:
 
-                (vxlan_header, vxlan_payload)=parse_vxlan_gpe(udp_payload)
-                vxlan_header_nt=StructVxLanGPEHeader(vxlan_header)
+                (vxlan_header, vxlan_payload) = parse_vxlan_gpe(udp_payload)
+                vxlan_header_nt = StructVxLanGPEHeader(vxlan_header)
 
-
-                (eth_nsh_header, eth_nsh_payload)=parse_ethernet(vxlan_payload)
+                (eth_nsh_header, eth_nsh_payload) = parse_ethernet(vxlan_payload)
                 eth_nsh_header_nt = StructEthHeader(eth_nsh_header)
 
                 (nsh_header, nsh_payload) = parse_nsh(eth_nsh_payload)
                 nsh_header_nt = StructNshHeader(nsh_header)
-
 
                 (inner_eth_header, inner_eth_payload) = parse_ethernet(nsh_payload)
                 inner_eth_header_nt = StructEthHeader(inner_eth_header)
@@ -661,9 +692,9 @@ def unencapsulate_packet(frame):
                 (inner_tcp_header_without_options, inner_tcp_options, inner_tcp_payload) = parse_tcp(inner_ip_payload)
                 inner_tcp_header_nt = StructTcpHeaderWithoutOptions(inner_tcp_header_without_options)
 
-                eth_dst = getattr(inner_eth_header_nt,"eth_dst")
-                eth_src = getattr(inner_eth_header_nt,"eth_src")
-                eth_type = getattr(inner_eth_header_nt,"eth_type")
+                eth_dst = getattr(inner_eth_header_nt, "eth_dst")
+                eth_src = getattr(inner_eth_header_nt, "eth_src")
+                eth_type = getattr(inner_eth_header_nt, "eth_type")
 
                 ip_dst = getattr(inner_ip_header_nt, "ip_dst")
                 ip_src = getattr(inner_ip_header_nt, "ip_src")
@@ -671,33 +702,30 @@ def unencapsulate_packet(frame):
                 tcp_dst_port = getattr(inner_tcp_header_nt, "tcp_dst_port")
                 tcp_src_port = getattr(inner_tcp_header_nt, "tcp_src_port")
 
-
-                #First check if this is a reply to an existing session
-                #Build a key with mac/ip swapped
-                isReply=False
+                # First check if this is a reply to an existing session
+                # Build a key with mac/ip swapped
 
                 key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
                 pf("\n^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
                 pf("^^^ Receiving packet encapsulated ^^^")
-                pf("^^ " + ip2str(ip_src)+":"+str(tcp_src_port)+
-                   "->"+ip2str(ip_dst)+":"+str(tcp_dst_port))
-                pf("^^ "+mac2str(eth_src)+"->"+mac2str(eth_dst)+ ", proto 17 ^^")
+                pf("^^ " + ip2str(ip_src) + ":" + str(tcp_src_port) +
+                   "->" + ip2str(ip_dst) + ":" + str(tcp_dst_port))
+                pf("^^ " + mac2str(eth_src) + "->" + mac2str(eth_dst) + ", proto 17 ^^")
                 pf("^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
                 pf("   Length of packet: " + str(len(frame)))
 
                 global sessions
 
-                sessions[key]=(outer_eth_header,
-                                     ip_header,
-                                     udp_header,
-                                     vxlan_header,
-                                     eth_nsh_header,
-                                     nsh_header)
+                sessions[key] = (outer_eth_header,
+                                 ip_header,
+                                 udp_header,
+                                 vxlan_header,
+                                 eth_nsh_header,
+                                 nsh_header)
 
-                pf("   # of sessions: "+ str(len(sessions)))
+                pf("   # of sessions: " + str(len(sessions)))
 
-
-                new_pkt=nsh_payload
+                new_pkt = vxlan_payload #nsh_payload
 
                 pf("   Sending packet deencapsulated")
 
@@ -705,8 +733,6 @@ def unencapsulate_packet(frame):
                 global sckt_unencap_in
                 global sckt_unencap_out
                 global mac_database
-
-                egress_socket = None
 
                 if eth_dst in mac_database:
                     if mac_database[eth_dst] == Sockets.input_socket:
@@ -729,16 +755,13 @@ def unencapsulate_packet(frame):
                 pf("   ****")
 
                 while new_pkt:
-                    pf("   Length of packet: "+ str(len(new_pkt)))
+                    pf("   Length of packet: " + str(len(new_pkt)))
                     sent = egress_socket.send(new_pkt)
                     new_pkt = new_pkt[sent:]
                     pf("   Packet sent")
 
 
-
 def encapsulate_request_packet(frame):
-
-
     (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
     outer_eth_header_nt = StructEthHeader(outer_eth_header)
     outer_eth_type = getattr(outer_eth_header_nt, 'eth_type')
@@ -750,7 +773,7 @@ def encapsulate_request_packet(frame):
         ip_header_nt = StructIpHeader(ip_header)
         ip_protocol = getattr(ip_header_nt, 'ip_protocol')
 
-        if ip_protocol == 6 or ip_protocol == 17 or ip_protocol == 1: #TCP or UDP or ICMP
+        if ip_protocol == 6 or ip_protocol == 17 or ip_protocol == 1:  # TCP or UDP or ICMP
 
             (tcp_header_without_options, tcp_options, tcp_payload) = parse_tcp(ip_payload)
             tcp_header_nt = StructTcpHeaderWithoutOptions(tcp_header_without_options)
@@ -765,7 +788,6 @@ def encapsulate_request_packet(frame):
             tcp_dst_port = getattr(tcp_header_nt, "tcp_dst_port")
             tcp_src_port = getattr(tcp_header_nt, "tcp_src_port")
 
-
             key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
 
             pf("\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
@@ -775,7 +797,6 @@ def encapsulate_request_packet(frame):
             pf("vv " + mac2str(eth_src) + "->" + mac2str(eth_dst) + ", proto 6 vv")
             pf("vvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
             pf("   Length of packet: " + str(len(frame)))
-
 
             if key in sessions:
                 pf("   Session found")
@@ -787,14 +808,13 @@ def encapsulate_request_packet(frame):
                  new_eth_nsh_header,
                  new_nsh_header) = sessions[key]
 
-                #Swap headers and send
+                # Swap headers and send
 
                 new_outer_eth_header_swapped = make_ethernet_header_swap(new_outer_eth_header)
                 new_ip_header_swapped = make_ip_header_swap(new_ip_header)
                 new_nsh_header_decremented = make_nsh_decr_si(new_nsh_header)
 
                 new_eth_nsh_header_swapped = make_ethernet_header_swap(new_eth_nsh_header)
-
 
                 new_pkt = new_outer_eth_header_swapped + \
                           new_ip_header_swapped + \
@@ -808,7 +828,7 @@ def encapsulate_request_packet(frame):
                 global sckt_encap
 
                 while new_pkt:
-                    pf("   Length of packet: "+ str(len(new_pkt)))
+                    pf("   Length of packet: " + str(len(new_pkt)))
                     sent = sckt_encap.send(new_pkt)
                     new_pkt = new_pkt[sent:]
                     pf("   Packet sent")
@@ -819,8 +839,6 @@ def encapsulate_request_packet(frame):
 
 
 def encapsulate_reply_packet(frame):
-
-
     (outer_eth_header, outer_eth_payload) = parse_ethernet(frame)
     outer_eth_header_nt = StructEthHeader(outer_eth_header)
     outer_eth_type = getattr(outer_eth_header_nt, 'eth_type')
@@ -832,8 +850,8 @@ def encapsulate_reply_packet(frame):
         ip_header_nt = StructIpHeader(ip_header)
         ip_protocol = getattr(ip_header_nt, 'ip_protocol')
 
-        if ip_protocol == 6 or ip_protocol == 17 or ip_protocol == 1: #TCP or UDP or ICMP
-            #In this case check if this belongs to an existing session and add the VxLAN/NSH header
+        if ip_protocol == 6 or ip_protocol == 17 or ip_protocol == 1:  # TCP or UDP or ICMP
+            # In this case check if this belongs to an existing session and add the VxLAN/NSH header
 
             (tcp_header_without_options, tcp_options, tcp_payload) = parse_tcp(ip_payload)
             tcp_header_nt = StructTcpHeaderWithoutOptions(tcp_header_without_options)
@@ -889,13 +907,11 @@ def encapsulate_reply_packet(frame):
                 global sckt_encap
 
                 while new_pkt:
-                    pf("   Length of packet: "+ str(len(new_pkt)))
-                    if len(new_pkt)>=4096 :
-                        pf("Error: packet really large: "+str(new_pkt))
+                    pf("   Length of packet: " + str(len(new_pkt)))
+                    if len(new_pkt) >= 4096:
+                        pf("Error: packet really large: " + str(new_pkt))
                         pf("Discarding packet")
-                        new_pkt=[]
-
-#                        exit(-2)
+                        new_pkt = []
                     else:
                         sent = sckt_encap.send(new_pkt)
                         new_pkt = new_pkt[sent:]
@@ -911,7 +927,6 @@ def encapsulate_reply_packet(frame):
 # ************************************************
 
 def unencapsulating_loop():
-
     global sckt_encap
     global sckt_unencap_out
     global unencap_out_if
@@ -922,7 +937,6 @@ def unencapsulating_loop():
 
 
 def encapsulating_requests_loop():
-
     global sckt_unencap_in
     global encap_if
 
@@ -932,7 +946,6 @@ def encapsulating_requests_loop():
 
 
 def encapsulating_replies_loop():
-
     global sckt_unencap_out
     global encap_if
 
@@ -942,7 +955,6 @@ def encapsulating_replies_loop():
 
 
 def setup_sockets():
-
     global sckt_encap
     global sckt_unencap_in
     global sckt_unencap_out
@@ -962,7 +974,6 @@ def setup_sockets():
 
 
 if __name__ == "__main__":
-
 
     parser = argparse.ArgumentParser(description='Python3 script to emulate an SFC proxy,'
                                                  ' removing VxLAN and NSH headers',
@@ -994,12 +1005,13 @@ if __name__ == "__main__":
     setup_sockets()
 
     unencapsulating_thread = threading.Thread(target=unencapsulating_loop, name="unencapsulating thread")
-    encapsulating_replies_thread = threading.Thread(target=encapsulating_replies_loop, name="encapsulating replies thread")
-    encapsulating_requests_thread = threading.Thread(target=encapsulating_requests_loop, name="encapsulating requests thread")
+    encapsulating_replies_thread = threading.Thread(target=encapsulating_replies_loop,
+                                                    name="encapsulating replies thread")
+    encapsulating_requests_thread = threading.Thread(target=encapsulating_requests_loop,
+                                                     name="encapsulating requests thread")
 
     unencapsulating_thread.start()
     encapsulating_replies_thread.start()
     encapsulating_requests_thread.start()
 
-    pf("v0.99 - Threads active - Listening...")
-
+    pf("v0.991 - Threads active - Listening...")
