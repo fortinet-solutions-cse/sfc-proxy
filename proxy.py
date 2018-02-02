@@ -705,7 +705,7 @@ def unencapsulate_packet(frame):
                 # First check if this is a reply to an existing session
                 # Build a key with mac/ip swapped
 
-                key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
+                key = (eth_dst, eth_src, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
                 pf("\n^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^")
                 pf("^^^ Receiving packet encapsulated ^^^")
                 pf("^^ " + ip2str(ip_src) + ":" + str(tcp_src_port) +
@@ -725,7 +725,7 @@ def unencapsulate_packet(frame):
 
                 pf("   # of sessions: " + str(len(sessions)))
 
-                new_pkt = vxlan_payload #nsh_payload
+                new_pkt = vxlan_payload
 
                 pf("   Sending packet deencapsulated")
 
@@ -766,10 +766,13 @@ def encapsulate_request_packet(frame):
     outer_eth_header_nt = StructEthHeader(outer_eth_header)
     outer_eth_type = getattr(outer_eth_header_nt, 'eth_type')
 
-    if (outer_eth_type == 0x0800):  # EtherType: IPv4 0x0800
+    if (outer_eth_type == 0x894f):  # EtherType: IPv4 0x0800
         next_eth_payload = outer_eth_payload
 
-        (ip_header, ip_payload) = parse_ip(next_eth_payload)
+        (nsh_header, nsh_payload) = parse_nsh(next_eth_payload)
+        (eth_header, eth_payload) = parse_ethernet(nsh_payload)
+
+        (ip_header, ip_payload) = parse_ip(eth_payload)
         ip_header_nt = StructIpHeader(ip_header)
         ip_protocol = getattr(ip_header_nt, 'ip_protocol')
 
@@ -788,7 +791,7 @@ def encapsulate_request_packet(frame):
             tcp_dst_port = getattr(tcp_header_nt, "tcp_dst_port")
             tcp_src_port = getattr(tcp_header_nt, "tcp_src_port")
 
-            key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
+            key = (eth_dst, eth_src, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
 
             pf("\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
             pf("vvv Receiving packet unencapsulated  (In) vvv")
@@ -820,8 +823,6 @@ def encapsulate_request_packet(frame):
                           new_ip_header_swapped + \
                           new_udp_header + \
                           new_vxlan_header + \
-                          new_eth_nsh_header_swapped + \
-                          new_nsh_header_decremented + \
                           frame
 
                 pf("   Sending packet encapsulated")
@@ -843,8 +844,11 @@ def encapsulate_reply_packet(frame):
     outer_eth_header_nt = StructEthHeader(outer_eth_header)
     outer_eth_type = getattr(outer_eth_header_nt, 'eth_type')
 
-    if (outer_eth_type == 0x0800):  # EtherType: IPv4 0x0800
+    if (outer_eth_type == 0x894f):  # EtherType: IPv4 0x0800
         next_eth_payload = outer_eth_payload
+
+        (nsh_header, nsh_payload) = parse_nsh(next_eth_payload)
+        (eth_header, eth_payload) = parse_ethernet(nsh_payload)
 
         (ip_header, ip_payload) = parse_ip(next_eth_payload)
         ip_header_nt = StructIpHeader(ip_header)
@@ -866,7 +870,7 @@ def encapsulate_reply_packet(frame):
             tcp_dst_port = getattr(tcp_header_nt, "tcp_dst_port")
             tcp_src_port = getattr(tcp_header_nt, "tcp_src_port")
 
-            key = (eth_dst, eth_src, eth_type, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
+            key = (eth_dst, eth_src, ip_dst, ip_src, tcp_dst_port, tcp_src_port)
 
             pf("\nvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvvv")
             pf("vvv Receiving packet unencapsulated (Out) vvv")
